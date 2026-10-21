@@ -89,6 +89,15 @@ cols_to_replace = ['BUS_USE', 'AD_BUILDINGS', 'AD_CONTENTS', 'CONTENTS_COVER', '
 df[cols_to_replace]= df[cols_to_replace].replace({'Y': 1, 'N': 0})
 
 ```
+Let's see the effect of Median Imputation on the distribution 
+* Before and After the Imputation (Area_B)
+![
+](Images/output5.png)
+* Before and After the Imputation (Area_C)
+![alt text](Images/output6.png)
+
+The reason we do median imputation to fill missing values in numeric data when the distribution is skewed or contains outliers.
+
 ### 3. Exploratory data analysis
 - **Univariate:** premium distribution, employment status, gender, payment method, construction year, quote and cover-start months
 
@@ -105,6 +114,11 @@ plt.tight_layout()
 plt.show()
 
 ```
+![alt text](Images/output7.png)
+![
+](Images/output8.png)
+
+
 - **Bivariate:** payment method vs. premium (violin), age vs. premium (regression), property age vs. premium, payment method vs. payment frequency
 
 ```Python
@@ -122,6 +136,8 @@ plt.tight_layout()
 plt.show()
 
 ```
+![alt text](Images/output3.png)
+![alt text](Images/output2.png)
 - **Multivariate:** correlation heatmap of security and construction features against premium
 
 ```Python
@@ -132,6 +148,7 @@ plt.title('Correlation Heatmap for House Info Features')
 plt.show()
 
 ```
+![alt text](Images/output.png)
 
 ### 4. Modelling
 80/20 train-test split (`random_state=42`).
@@ -174,7 +191,11 @@ Python · pandas · NumPy · Matplotlib · Seaborn · scikit-learn · XGBoost ·
 .
 ├── Property_insurance_premium.ipynb   # Cleaning, EDA and modelling
 ├── Dataset_Features.txt               # Column descriptions
-├── home_insurance_dataset.csv         # Dataset (see source above)
+├── home_insurance_dataset.csv         # Dataset 
+|
+|- Images/ 
+|
+source above)
 └── README.md
 ```
 
