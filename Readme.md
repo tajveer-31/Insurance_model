@@ -1,4 +1,4 @@
-# Home Insurance Premium Prediction
+# Property Insurance Premium Prediction
 
 An end-to-end machine learning project that predicts the **annual premium** of home insurance policies from property, coverage, security and customer features. It covers data cleaning, feature engineering, EDA and regression modelling on **~256,000 policy records**.
 
