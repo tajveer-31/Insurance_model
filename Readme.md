@@ -1,213 +1,92 @@
 # Property Insurance Premium Prediction
 
-An end-to-end machine learning project that predicts the **annual premium** of home insurance policies from property, coverage, security and customer features. It covers data cleaning, feature engineering, EDA and regression modelling on **~256,000 policy records**.
+Predicting the **annual premium** of a home insurance policy from policyholder, property and cover details, using regression models in a single Jupyter notebook. The project also looks at overfitting: which models memorise the training data, and how much hyperparameter tuning helps.
 
-## Objective
+## Contents
 
-Predict `ANNUAL_PREMIUM` for a home insurance policy and understand which factors influence pricing.
+| File | Description |
+|---|---|
+| `Property_insurance_premium.ipynb` | Full workflow: cleaning, feature engineering, EDA, modelling, tuning |
+| `home_insurance_dataset.csv` | Input data (not included here; place it next to the notebook) |
+| `best_premium_model.pkl` | Created by the last cell: best tuned model, scaler and column list |
 
 ## Dataset
 
-- **Size:** 256,136 rows × 42 columns (188,988 rows × 45 columns after cleaning and feature engineering)
-- **Source:** `ADD_YOUR_DATASET_SOURCE_HERE` (name and link the public source, e.g. Kaggle)
-- **Target:** `ANNUAL_PREMIUM`
-- Full column descriptions are in [`Dataset_Features.txt`](Dataset_Features.txt).
-
-| Group | Example features |
-|---|---|
-| Policy and dates | `QUOTE_DATE`, `COVER_START`, `PAYMENT_METHOD`, `PAYMENT_FREQUENCY` |
-| Coverage | `BUILDINGS_COVER`, `CONTENTS_COVER`, `SUM_INSURED_BUILDINGS`, `AD_BUILDINGS`, `AD_CONTENTS`, `SPEC_SUM_INSURED` |
-| Risk | `RISK_RATED_AREA_B/C`, `NCD_GRANTED_YEARS_B/C`, `FLOODING`, `SUBSIDENCE` |
-| Security | `APPR_ALARM`, `APPR_LOCKS`, `SAFE_INSTALLED`, `NEIGH_WATCH`, `SEC_DISC_REQ` |
-| Property | `PROP_TYPE`, `BEDROOMS`, `YEARBUILT`, `ROOF_CONSTRUCTION`, `WALL_CONSTRUCTION`, `LISTED`, `MAX_DAYS_UNOCC` |
-| Customer | `P1_EMP_STATUS`, `P1_MAR_STATUS`, `P1_GENDER`, `P1_DOB`, `OCC_STATUS` |
+- 256,136 policies × 42 columns; **188,988 rows remain after cleaning**.
+- **Target:** `ANNUAL_PREMIUM`.
+- Feature groups: policyholder (date of birth, employment, marital status, gender), property (year built, bedrooms, roof/wall construction, listed status), cover (buildings/contents cover, sums insured, no-claims discount years), security (alarm, locks, safe, neighbourhood watch) and risk (flooding, subsidence, risk-rated areas).
 
 ## Workflow
 
-### 1. Data cleaning
-- Parsed dates held in mixed formats (`dd/mm/yyyy`, `dd-mm-yyyy`, `mm-dd-yyyy`) into proper datetimes.
-- Found that **67,115 rows were missing** across a shared set of columns (policy, coverage and customer fields). Since the entire record was blank, these rows were dropped.
-- Imputed `RISK_RATED_AREA_B` and `RISK_RATED_AREA_C` with the **median**, and compared the distributions before and after.
-- Filled missing `QUOTE_DATE` values by forward fill.
-- Removed policies with `ANNUAL_PREMIUM <= 0`.
+1. **Cleaning**
+   - Parsed date columns in mixed formats.
+   - Dropped the 67,115 rows that were missing all the core policy fields.
+   - Filled `PAYMENT_FREQUENCY` with 2.
+   - Imputed `RISK_RATED_AREA_B` and `RISK_RATED_AREA_C` with the median.
+   - Forward-filled `QUOTE_DATE`.
+   - Removed policies with a premium of 0 or less.
+2. **Feature engineering**
+   - Created `AGE` and `PROPERTY_AGE` at cover start.
+   - Split dates into year and month features.
+   - Created `Year_of_Construction`.
+   - Dropped the raw date columns.
+3. **Encoding and scaling**
+   - Y/N columns became 0/1.
+   - One-hot encoded `OCC_STATUS`, `P1_EMP_STATUS`, `P1_MAR_STATUS`, `P1_GENDER` and `PAYMENT_METHOD`.
+   - Scaled numeric features with `StandardScaler`. This gives 71 model features.
+4. **EDA**: premium distribution, employment status, build year, gender and payment method counts, premium vs. age and property age, correlation heatmap.
+5. **Modelling:** 80/20 train/test split (`random_state=42`).
+   - Decision Tree, Linear Regression, Ridge, Lasso and Random Forest, with train and test R² compared.
+   - Gradient Boosting, XGBoost, LightGBM and SVR are also included, but their evaluation cells error with current scikit-learn (see Known issues).
+6. **Hyperparameter tuning:** `RandomizedSearchCV` with 3-fold CV on a 40k-row sample of the training set. The best settings are refit on the full training set, models are ranked by CV score, and the winner is saved with `joblib`.
 
-```python 
+## Results
 
-df['YEARBUILT'] = pd.to_datetime(df['YEARBUILT'], format='%Y')
-date_formats = ['%d/%m/%Y', '%d-%m-%Y']
-def convert_to_datetime(date_str):
-    for fmt in date_formats:
-        try:
-            return pd.to_datetime(date_str, format=fmt)
-        except ValueError:
-            pass
+Test-set R² before and after tuning:
 
-df['P1_DOB'] = df['P1_DOB'].apply(convert_to_datetime)
-df['COVER_START'] = df['COVER_START'].apply(convert_to_datetime)
-df['QUOTE_DATE'] = df['QUOTE_DATE'].astype(str).str.strip().str.replace('/', '-')
-df['QUOTE_DATE'] = pd.to_datetime(df['QUOTE_DATE'], format='%m-%d-%Y')
+| Model | Train R² (before → after) | Test R² (before → after) | Train–test gap (before → after) |
+|---|---|---|---|
+| Decision Tree | 1.000 → 0.722 | 0.452 → 0.652 | 0.549 → 0.070 |
+| Random Forest | 0.963 → 0.784 | 0.698 → 0.698 | 0.266 → 0.086 |
+| Ridge | 0.626 → 0.626 | 0.593 → 0.593 | 0.033 → 0.033 |
+| Lasso | 0.626 → 0.626 | 0.592 → 0.593 | 0.033 → 0.033 |
 
-median_risk_b = df['RISK_RATED_AREA_B'].median()
-df['RISK_RATED_AREA_B'].fillna(median_risk_b, inplace=True)
+**Best model by CV: Random Forest.** Test R² 0.698, MAE ≈ 32.3, RMSE ≈ 55.4.
 
-median_risk_C = df['RISK_RATED_AREA_C'].median()
-df['RISK_RATED_AREA_C'].fillna(median_risk_C, inplace=True)
+What this shows:
+- **The linear models were never overfitting.** Train and test R² are within 0.03 of each other, so Ridge and Lasso regularization changes nothing. The 0.59 test R² is roughly the ceiling for a linear model on these features.
+- **The Decision Tree and Random Forest were overfitting.** Tuning cut their train–test gaps sharply (Decision Tree 0.55 → 0.07). For the Decision Tree, test R² also improved a lot (0.45 → 0.65).
+- **Tuning the Random Forest closed the gap but did not raise test R².** It stayed at about 0.70, so tuning made it more stable rather than more accurate.
 
+## Setup
 
+```bash
+pip install pandas numpy matplotlib seaborn scikit-learn scipy xgboost lightgbm joblib jupyter
+jupyter notebook Property_insurance_premium.ipynb
 ```
-### 2. Feature engineering
-- `AGE`: client age at the start of cover
-- `PROPERTY_AGE`: age of the property at the start of cover
-- Extracted year and month from `QUOTE_DATE` and `COVER_START`
-- Converted `Y/N` flags to `1/0`
-- One-hot encoded occupancy, employment, marital status, gender and payment method
-- Standardised numeric features with `StandardScaler`
 
-```python 
+Put `home_insurance_dataset.csv` in the same folder and run the cells top to bottom. Tuning is the slow part. In the reported run, Lasso took about 4 minutes and the Random Forest search about 2 minutes. To speed it up, lower `SEARCH_ROWS` or `n_iter`.
 
-
-df['AGE'] = ((df['COVER_START'] - df['P1_DOB']) / pd.Timedelta(days = 365.25)).astype(int)
-df['PROPERTY_AGE'] = ((df['COVER_START'] - df['YEARBUILT']).dt.days // 365)
-print(df[['P1_DOB', 'COVER_START', 'YEARBUILT', 'AGE', 'PROPERTY_AGE']])
-
-df['QUOTE_YEAR'] = df['QUOTE_DATE'].dt.year
-df['QUOTE_MONTH'] = df['QUOTE_DATE'].dt.month
-df['COVER_START_YEAR'] = df['COVER_START'].dt.year
-df['COVER_START_MONTH'] = df['COVER_START'].dt.month
-
-# Drop original date columns
-df = df.drop(['QUOTE_DATE', 'COVER_START'], axis=1)
-df = df.drop(['P1_DOB'], axis=1)
-
-df['Year_of_Construction'] = df['YEARBUILT'].dt.year
-df = df.drop('YEARBUILT', axis=1)
-
-cols_to_replace = ['BUS_USE', 'AD_BUILDINGS', 'AD_CONTENTS', 'CONTENTS_COVER', 'BUILDINGS_COVER',
-                   'P1_POLICY_REFUSED', 'APPR_ALARM', 'APPR_LOCKS', 'FLOODING', 'NEIGH_WATCH',
-                   'SAFE_INSTALLED', 'SEC_DISC_REQ', 'SUBSIDENCE']
-
-df[cols_to_replace]= df[cols_to_replace].replace({'Y': 1, 'N': 0})
-
-```
-Let's see the effect of Median Imputation on the distribution 
-* Before and After the Imputation (Area_B)
-![
-](Images/output5.png)
-* Before and After the Imputation (Area_C)
-![alt text](Images/output6.png)
-
-The reason we do median imputation to fill missing values in numeric data when the distribution is skewed or contains outliers.
-
-### 3. Exploratory data analysis
-- **Univariate:** premium distribution, employment status, gender, payment method, construction year, quote and cover-start months
+## Using the saved model
 
 ```python
+import joblib, pandas as pd
 
-fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 3))
-sns.histplot(df['ANNUAL_PREMIUM'], ax=axes, bins = 30, kde = True, color = 'blue')
-axes.set_title('Distribution of ANNUAL_PREMIUM')
-axes.set_xlabel('Annual Premium')
-axes.set_ylabel('Frequency')
+bundle = joblib.load("best_premium_model.pkl")
+model, scaler = bundle["model"], bundle["scaler"]
 
-
-plt.tight_layout()
-plt.show()
-
-```
-![alt text](Images/output7.png)
-![
-](Images/output8.png)
-
-
-- **Bivariate:** payment method vs. premium (violin), age vs. premium (regression), property age vs. premium, payment method vs. payment frequency
-
-```Python
-
-fig, ax = plt.subplots(figsize=(7, 5))
-
-# Violin plot for PAYMENT_METHOD vs. ANNUAL_PREMIUM
-sns.violinplot(x='PAYMENT_METHOD', y='ANNUAL_PREMIUM', data=df, ax=ax)
-ax.set_title('PAYMENT_METHOD vs. ANNUAL_PREMIUM')
-ax.set_xlabel('Payment Method')
-ax.set_ylabel('Annual Premium')
-
-# Adjust layout
-plt.tight_layout()
-plt.show()
-
-```
-![alt text](Images/output3.png)
-![alt text](Images/output2.png)
-- **Multivariate:** correlation heatmap of security and construction features against premium
-
-```Python
-
-house_info_corr = df[['APPR_ALARM', 'APPR_LOCKS', 'ROOF_CONSTRUCTION', 'WALL_CONSTRUCTION', 'FLOODING', 'SAFE_INSTALLED', 'ANNUAL_PREMIUM']].corr()
-sns.heatmap(house_info_corr, annot=True, cmap='coolwarm', linewidths=.5)
-plt.title('Correlation Heatmap for House Info Features')
-plt.show()
-
-```
-![alt text](Images/output.png)
-
-### 4. Modelling
-80/20 train-test split (`random_state=42`).
-
-| Model | Test R² | Notes |
-|---|---|---|
-| Decision Tree | 0.452 | MAE ≈ 45.9, RMSE ≈ 74.7. Train R² ≈ 1.00, so it clearly **overfits** |
-| Linear Regression | **0.593** | Best result so far |
-| SVR, Gradient Boosting, Random Forest, XGBoost, LightGBM | In progress | Code is written, results not yet recorded |
-
-
-```Python
-
-from sklearn.model_selection import train_test_split
-x_train, x_test, y_train, y_test = train_test_split(x,y,train_size=0.8, random_state = 42)
-
-from sklearn.tree import DecisionTreeRegressor
-model = DecisionTreeRegressor(random_state=42)
-model.fit(x_train, y_train)
-y_test_pred = model.predict(x_test)
-
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, root_mean_squared_error
-mae = mean_absolute_error(y_test, y_test_pred)
-mse = mean_squared_error(y_test, y_test_pred)
-rmse = root_mean_squared_error(y_test, y_test_pred)
-r2 = r2_score(y_test, y_test_pred)
-
-```
-**Takeaway:** the simple linear model generalised better than the unconstrained decision tree. Tree-based models need regularisation (depth limits, ensembling) to beat it.
-
-## Tech stack
-
-Python · pandas · NumPy · Matplotlib · Seaborn · scikit-learn · XGBoost · LightGBM · Jupyter Notebook
-
-
-
-## Project structure
-
-```
-.
-├── Property_insurance_premium.ipynb   # Cleaning, EDA and modelling
-├── Dataset_Features.txt               # Column descriptions
-├── home_insurance_dataset.csv         # Dataset 
-|
-|- Images/ 
-|
-source above)
-└── README.md
+# new_row: a one-row DataFrame prepared exactly like training
+# (same cleaning, same one-hot columns, same column order)
+new_row = new_row.reindex(columns=bundle["columns"], fill_value=0)
+new_row[bundle["numerical_cols"]] = scaler.transform(new_row[bundle["numerical_cols"]])
+print(model.predict(new_row))
 ```
 
-## Next steps
+## Known issues and next steps
 
-- Finish evaluating Random Forest, Gradient Boosting, XGBoost and LightGBM and compare all models in one table
-- Tune hyperparameters with cross-validation (`GridSearchCV` / `RandomizedSearchCV`)
-- Predict on a log-transformed premium, since the target is likely right-skewed
-- Add feature-importance and SHAP analysis
-- Fit the scaler and encoders on the training set only, using a scikit-learn `Pipeline`
-- Add outlier handling
-
-## Author
-
-Tajveer Singh
+- **Gradient Boosting, XGBoost, LightGBM and SVR evaluation cells fail on current scikit-learn.**
+- **The scaler is fit on all rows before the train/test split.** This leaks a small amount of test information. Fit it on `x_train` only, ideally inside a `Pipeline`.
+- **The "Training R²" cell under Ridge scores the Decision Tree** (`model`), not Ridge. Change it to `ridge`.
+- **The split is random.** If policies repeat per customer or the data is time-ordered, use `GroupKFold` or a time-based split for a more honest estimate.
+- **Rows with no `QUOTE_DATE` are forward-filled**, which assumes the file order carries meaning. Consider a missing-date flag instead.
+- **Ideas:** tune the boosting models, try a log-transformed target (premiums are right-skewed), and check feature importances.
